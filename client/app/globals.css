@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', sans-serif;
+  --color-brand-primary: #126c65;
+  --color-brand-primary-dark: #0c514b;
+  --color-brand-accent: #c06f2d;
+  --color-brand-bg: #f4f7fb;
+  --color-brand-text: #0f172a;
+  --color-brand-muted: #64748b;
+}
+
+/* Custom animation for spinner - Tailwind provides animate-spin by default, but we declare keyframe spin for extra security */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

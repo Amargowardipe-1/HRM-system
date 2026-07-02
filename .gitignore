@@ -1,0 +1,24 @@
+# Ignore node_modules
+client/node_modules
+server/node_modules
+
+# Environment
+.env
+.env.*
+
+# Next.js
+client/.next/
+
+# Logs
+*.log
+
+# Uploads
+uploads/
+
+# Build
+dist/
+build/
+
+# OS Files
+.DS_Store
+Thumbs.db
