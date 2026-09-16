@@ -1,5 +1,7 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "https://hrm-system-iwy5.onrender.com";
 
 // Helper to construct headers with JWT authorization token
 function getHeaders(customHeaders = {}, token = null) {
