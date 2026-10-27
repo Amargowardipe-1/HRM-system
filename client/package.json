@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.13.0",
     "@tailwindcss/postcss": "^4.3.1",
     "antd": "^6.5.0",
     "axios": "^1.18.1",
@@ -17,6 +18,7 @@
     "postcss": "^8.5.15",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-redux": "^9.3.0",
     "tailwindcss": "^4.3.1"
   },
   "devDependencies": {

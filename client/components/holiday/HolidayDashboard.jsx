@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createHoliday, updateHoliday, deleteHoliday, getHolidays } from "@/lib/api";
+import { useDispatch, useSelector } from "react-redux";
+import { createHoliday, updateHoliday, deleteHoliday } from "@/lib/api";
+import { fetchHolidays, setHolidays } from "@/store/slices/holidaySlice";
 import { HolidayTable } from "./HolidayTable";
 import { HolidayForm } from "./HolidayForm";
 import { DesignationModal as HolidayModal } from "@/components/designation/DesignationModal";
@@ -10,24 +12,37 @@ import { Plus, RefreshCw, CalendarDays } from "lucide-react";
 
 export function HolidayDashboard({ initialHolidays = [], currentUser = {}, token = null }) {
   const router = useRouter();
+  const dispatch = useDispatch();
+
+  const reduxHolidays = useSelector((state) => state.holidays.holidays);
+  const holidaysLoaded = useSelector((state) => state.holidays.isLoaded);
+
   const isAdmin = currentUser.role === "Admin";
   const isHR = currentUser.role === "HR";
   const isAdminOrHR = isAdmin || isHR;
 
-  const [holidays, setHolidays] = useState(initialHolidays);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedHoliday, setSelectedHoliday] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const holidays = reduxHolidays.length > 0 || holidaysLoaded ? reduxHolidays : initialHolidays;
+
+  useEffect(() => {
+    if (!holidaysLoaded && initialHolidays.length === 0) {
+      dispatch(fetchHolidays(token));
+    } else if (initialHolidays.length > 0 && !holidaysLoaded) {
+      dispatch(setHolidays(initialHolidays));
+    }
+  }, [dispatch, holidaysLoaded, initialHolidays, token]);
+
   const loadAllHolidays = async () => {
     setError("");
     try {
-      const data = await getHolidays(token);
-      setHolidays(data);
+      await dispatch(fetchHolidays(token)).unwrap();
     } catch (err) {
-      setError(err.message || "Failed to refresh holiday list.");
+      setError(err?.message || "Failed to refresh holiday list.");
     }
   };
 
@@ -38,7 +53,6 @@ export function HolidayDashboard({ initialHolidays = [], currentUser = {}, token
       await createHoliday(formData, token);
       await loadAllHolidays();
       setShowCreateModal(false);
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to add holiday.");
     } finally {
@@ -53,7 +67,6 @@ export function HolidayDashboard({ initialHolidays = [], currentUser = {}, token
       await updateHoliday(selectedHoliday._id, formData, token);
       await loadAllHolidays();
       setShowEditModal(false);
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to update holiday.");
     } finally {
@@ -66,7 +79,6 @@ export function HolidayDashboard({ initialHolidays = [], currentUser = {}, token
       try {
         await deleteHoliday(id, token);
         await loadAllHolidays();
-        router.refresh();
       } catch (err) {
         alert(err.message || "Failed to delete holiday.");
       }

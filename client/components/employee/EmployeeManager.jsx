@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { RefreshCw, UserPlus } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useSearchParams } from "next/navigation";
-import { createUser, getUsers, updateUser, deleteUser, getDepartments, getSystemSettings } from "@/lib/api";
+import { createUser, updateUser, deleteUser } from "@/lib/api";
+import { fetchEmployees, removeEmployee } from "@/store/slices/employeeSlice";
+import { fetchDepartments } from "@/store/slices/departmentSlice";
 import { EmployeeCreateModal } from "./EmployeeCreateModal";
 import { EmployeeEditModal } from "./EmployeeEditModal";
 import { EmployeeDetailModal } from "./EmployeeDetailModal";
@@ -14,26 +17,46 @@ import { EmployeeTable } from "./EmployeeTable";
 
 export function EmployeeManager() {
   const { user } = useAuth() || {};
+  const dispatch = useDispatch();
   const searchParams = useSearchParams();
   const urlSearch = searchParams?.get("search") || "";
+
+  // Redux state
+  const {
+    employees,
+    roles,
+    isLoaded: employeesLoaded,
+    loading: employeesLoading,
+  } = useSelector((state) => state.employees);
+  const { departments, isLoaded: deptsLoaded } = useSelector(
+    (state) => state.departments
+  );
 
   // Permissions based on user role
   const canEdit = user?.role === "Admin" || user?.role === "HR";
   const canDelete = user?.role === "Admin" || user?.role === "HR";
 
-  const [employees, setEmployees] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [roles, setRoles] = useState(["Employee", "HR", "Admin"]);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState(urlSearch);
   const [roleFilter, setRoleFilter] = useState("All");
   const [showCreateForm, setShowCreateForm] = useState(false);
 
+  const isLoading = !employeesLoaded && employeesLoading;
+
   // Update searchTerm when URL search parameter changes (e.g. from Navbar)
   useEffect(() => {
     setSearchTerm(urlSearch);
   }, [urlSearch]);
+
+  // Initial load if not already in store
+  useEffect(() => {
+    if (!employeesLoaded) {
+      dispatch(fetchEmployees());
+    }
+    if (!deptsLoaded) {
+      dispatch(fetchDepartments());
+    }
+  }, [dispatch, employeesLoaded, deptsLoaded]);
 
   // Detail view state
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -71,30 +94,16 @@ export function EmployeeManager() {
   }, [employees, roleFilter, searchTerm]);
 
   async function loadEmployees() {
-    setIsLoading(true);
     setError("");
-
     try {
-      const [users, depts] = await Promise.all([getUsers(), getDepartments()]);
-      setEmployees(users);
-      setDepartments(depts);
+      await Promise.all([
+        dispatch(fetchEmployees()).unwrap(),
+        dispatch(fetchDepartments()).unwrap(),
+      ]);
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+      setError(err?.message || "Failed to reload data");
     }
   }
-
-  useEffect(() => {
-    loadEmployees();
-    getSystemSettings()
-      .then((data) => {
-        if (data && data.roles) {
-          setRoles(data.roles.map((r) => r.role));
-        }
-      })
-      .catch((err) => console.error("Failed to load dynamic roles:", err));
-  }, []);
 
   async function handleCreateUser(userData) {
     await createUser(userData);

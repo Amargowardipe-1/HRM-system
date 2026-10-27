@@ -1,12 +1,18 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Briefcase,
   Building2,
   Calendar,
+  Check,
   CheckCircle2,
+  Clock,
   Coins,
+  Copy,
+  CreditCard,
   Edit2,
+  Landmark,
   Mail,
   Phone,
   Shield,
@@ -20,7 +26,7 @@ function formatDate(value) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
-    month: "long",
+    month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
@@ -46,207 +52,613 @@ export function EmployeeDetailModal({
   canDelete = false,
   currentUser = null,
 }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [copiedField, setCopiedField] = useState(null);
+
+  // Close on Escape key
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Lock body scroll when drawer is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
+
   if (!isOpen || !employee) return null;
 
   const requesterId = currentUser?._id || currentUser?.id;
-  const isCreator = employee?.createdBy && (
-    employee.createdBy === requesterId || 
-    employee.createdBy?._id === requesterId || 
-    employee.createdBy?.toString() === requesterId?.toString()
-  );
+  const isCreator =
+    employee?.createdBy &&
+    (employee.createdBy === requesterId ||
+      employee.createdBy?._id === requesterId ||
+      employee.createdBy?.toString() === requesterId?.toString());
 
-  const hasEditPermission = currentUser?.role === "Admin" || (currentUser?.role === "HR" && isCreator);
-  const hasDeletePermission = currentUser?.role === "Admin" || (currentUser?.role === "HR" && isCreator);
+  const hasEditPermission =
+    currentUser?.role === "Admin" || (currentUser?.role === "HR" && isCreator);
+  const hasDeletePermission =
+    currentUser?.role === "Admin" || (currentUser?.role === "HR" && isCreator);
 
-  const showActions = hasEditPermission || hasDeletePermission;
+  const fullName =
+    `${employee.firstName || ""} ${employee.lastName || ""}`.trim() ||
+    employee.name ||
+    "Employee";
 
-  const fullName = `${employee.firstName || ""} ${employee.lastName || ""}`.trim() || employee.name || "Employee";
+  const handleCopy = (text, field) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-900/40 p-6 backdrop-blur-xs max-sm:items-end max-sm:p-3" role="presentation" onMouseDown={onClose}>
-      <section
-        className="w-full max-w-[550px] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col my-8"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="detail-user-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center gap-3.5 border-b border-slate-200 p-5 relative">
-          <div className="grid w-[42px] h-[42px] place-items-center rounded-xl bg-[#e7f3f1] text-brand-primary">
-            <User size={19} />
-          </div>
-          <div>
-            <h2 id="detail-user-title" className="text-lg font-bold text-brand-text">Employee Profile</h2>
-            <p className="text-sm text-brand-muted mt-0.5">Comprehensive HR and account credentials.</p>
-          </div>
-          <button className="absolute top-4.5 right-4.5 grid w-[34px] h-[34px] place-items-center border border-slate-200 rounded-lg bg-white text-brand-text hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-98 cursor-pointer" onClick={onClose} aria-label="Close details">
-            <X size={18} />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-[3px] transition-opacity duration-300 ease-out animate-in fade-in"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
-        <div className="p-6 grid gap-5 overflow-y-auto max-h-[calc(100vh-200px)]">
-          {/* Avatar and Main Header */}
-          <div className="flex items-center gap-4 border-b border-slate-200/80 pb-4.5">
-            <div className="grid w-[60px] h-[60px] place-items-center rounded-2xl bg-[#e7f3f1] text-brand-primary-dark font-extrabold text-2xl border border-slate-100 shadow-sm shrink-0">
-              {fullName.slice(0, 1).toUpperCase()}
+      {/* Slide-over panel (Right Half-Screen) */}
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10 max-sm:pl-0">
+        <div className="w-screen max-w-xl lg:max-w-2xl bg-white shadow-2xl flex flex-col h-full overflow-hidden transition-transform duration-300 ease-out animate-in slide-in-from-right">
+          
+          {/* Header Banner */}
+          <div className="relative h-32 bg-gradient-to-r from-teal-700 via-emerald-600 to-emerald-500 shrink-0 p-6 flex items-start justify-between">
+            {/* Background Pattern */}
+            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
+
+            <div className="relative z-10">
+              <span className="text-white/80 text-xs font-bold uppercase tracking-widest">
+                Employee Profile
+              </span>
+              <p className="text-white/90 text-sm font-medium mt-0.5">
+                Staff Directory & Account Dossier
+              </p>
             </div>
+
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="relative z-10 w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-95"
+              aria-label="Close drawer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Identity Section (Overlapping Avatar) */}
+          <div className="px-6 pb-4 pt-0 border-b border-slate-100 relative bg-white shrink-0">
+            <div className="flex items-end justify-between -mt-12 mb-3">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-primary to-brand-primary-dark text-white text-3xl font-black flex items-center justify-center shadow-lg border-4 border-white">
+                  {fullName.charAt(0).toUpperCase()}
+                </div>
+                <span
+                  className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center ${
+                    employee.status === "Active" ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                  title={employee.status || "Active"}
+                >
+                  <span className="w-2 h-2 rounded-full bg-white" />
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {hasEditPermission && (
+                  <button
+                    onClick={() => onEditClick(employee)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all shadow-xs cursor-pointer active:scale-98"
+                  >
+                    <Edit2 size={13} />
+                    Edit
+                  </button>
+                )}
+                {hasDeletePermission && (
+                  <button
+                    onClick={() => onDeleteClick(employee)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-all shadow-xs cursor-pointer active:scale-98"
+                  >
+                    <Trash2 size={13} />
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div>
-              <h3 className="text-xl font-bold text-brand-text mb-1">{fullName}</h3>
-              <div className="flex gap-2 items-center flex-wrap">
-                <span className="text-xs font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">{employee.employeeCode || "N/A"}</span>
-                <span className={`inline-flex min-h-[22px] items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-wider ${
-                  employee.userId?.role === "Admin"
-                    ? "bg-purple-50 text-purple-600 border border-purple-100"
-                    : employee.userId?.role === "HR"
-                    ? "bg-sky-50 text-sky-600 border border-sky-100"
-                    : "bg-orange-50 text-orange-600 border border-orange-100"
-                }`}>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                  {fullName}
+                </h2>
+                <span className="inline-flex items-center gap-1 font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                  {employee.employeeCode || "N/A"}
+                  <button
+                    onClick={() => handleCopy(employee.employeeCode, "code")}
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title="Copy code"
+                  >
+                    {copiedField === "code" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                  </button>
+                </span>
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    employee.userId?.role === "Admin"
+                      ? "bg-purple-50 text-purple-700 border border-purple-200"
+                      : employee.userId?.role === "HR"
+                      ? "bg-sky-50 text-sky-700 border border-sky-200"
+                      : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  }`}
+                >
                   {employee.userId?.role || "Employee"}
                 </span>
               </div>
+
+              <p className="text-sm text-slate-500 font-medium mt-1 flex items-center gap-2 flex-wrap">
+                <span>{employee.designation?.title || "No Designation"}</span>
+                <span>•</span>
+                <span>{employee.department?.name || "General"}</span>
+              </p>
+            </div>
+
+            {/* Segmented Tab Navigation */}
+            <div className="flex gap-1 mt-4 border-b border-slate-100">
+              <button
+                onClick={() => setActiveTab("overview")}
+                className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                  activeTab === "overview"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Overview & Contact
+              </button>
+              <button
+                onClick={() => setActiveTab("compensation")}
+                className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                  activeTab === "compensation"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Salary & Bank
+              </button>
+              <button
+                onClick={() => setActiveTab("account")}
+                className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                  activeTab === "account"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Account & Audit
+              </button>
             </div>
           </div>
 
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-4.5 max-sm:grid-cols-1">
-            <div className="flex items-center gap-3.5">
-              <Mail size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Email Address</small>
-                <span className="text-sm font-semibold text-brand-text break-all">{employee.userId?.email || "-"}</span>
-              </div>
-            </div>
+          {/* Drawer Body (Scrollable) */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+            {activeTab === "overview" && (
+              <>
+                {/* Contact Information Card */}
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                    Contact Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Mail size={15} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Email Address
+                        </small>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-sm font-semibold text-slate-800 truncate">
+                            {employee.userId?.email || "-"}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(employee.userId?.email, "email")}
+                            className="text-slate-400 hover:text-slate-700 shrink-0 cursor-pointer"
+                            title="Copy email"
+                          >
+                            {copiedField === "email" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
 
-            <div className="flex items-center gap-3.5">
-              <Phone size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Phone Number</small>
-                <span className="text-sm font-semibold text-brand-text">{employee.phone || "N/A"}</span>
-              </div>
-            </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Phone size={15} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Phone Number
+                        </small>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-sm font-semibold text-slate-800">
+                            {employee.phone || "Not Provided"}
+                          </span>
+                          {employee.phone && (
+                            <button
+                              onClick={() => handleCopy(employee.phone, "phone")}
+                              className="text-slate-400 hover:text-slate-700 shrink-0 cursor-pointer"
+                              title="Copy phone"
+                            >
+                              {copiedField === "phone" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-3.5">
-              <UserCheck size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Gender</small>
-                <span className="text-sm font-semibold text-brand-text">{employee.gender || "Male"}</span>
-              </div>
-            </div>
+                {/* Job & Work Details Card */}
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                    Employment & Role
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Building2 size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Department
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.department?.name || "General"}
+                        </span>
+                      </div>
+                    </div>
 
-            <div className="flex items-center gap-3.5">
-              <Calendar size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Date of Birth</small>
-                <span className="text-sm font-semibold text-brand-text">{formatOnlyDate(employee.dob)}</span>
-              </div>
-            </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Briefcase size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Designation
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.designation?.title || "No Designation"}
+                          {employee.designation?.level && ` (${employee.designation.level})`}
+                        </span>
+                      </div>
+                    </div>
 
-            <div className="flex items-center gap-3.5">
-              <Building2 size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Department</small>
-                <span className="text-sm font-semibold text-brand-text">
-                  {employee.department?.name || "No Department"}
-                </span>
-              </div>
-            </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Shield size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Employment Type
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.employmentType || "Full-time"}
+                        </span>
+                      </div>
+                    </div>
 
-            <div className="flex items-center gap-3.5">
-              <Briefcase size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Designation</small>
-                <span className="text-sm font-semibold text-brand-text">
-                  {employee.designation ? `${employee.designation.title} (${employee.designation.level})` : "No Designation"}
-                </span>
-              </div>
-            </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Calendar size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Joining Date
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {formatOnlyDate(employee.joiningDate || employee.createdAt)}
+                        </span>
+                      </div>
+                    </div>
 
-            <div className="flex items-center gap-3.5">
-              <Shield size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Employment Type</small>
-                <span className="text-sm font-semibold text-brand-text">{employee.employmentType || "Full-time"}</span>
-              </div>
-            </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <UserCheck size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Reporting Manager
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.manager
+                            ? `${employee.manager.firstName || ""} ${employee.manager.lastName || ""}`.trim()
+                            : "Direct to CEO / None"}
+                        </span>
+                      </div>
+                    </div>
 
-            <div className="flex items-center gap-3.5">
-              <Coins size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Annual Salary</small>
-                <span className="text-sm font-semibold text-brand-text">
-                  {employee.salary ? `$${employee.salary.toLocaleString()}/yr` : "Not Disclosed"}
-                </span>
-              </div>
-            </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <CheckCircle2 size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Employment Status
+                        </small>
+                        <div className="mt-0.5">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                              employee.status === "Active"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : employee.status === "On Leave"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-red-50 text-red-700"
+                            }`}
+                          >
+                            {employee.status || "Active"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-3.5">
-              <CheckCircle2 size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Status</small>
-                <div className="flex gap-1.5 items-center mt-1">
-                  <span className={`inline-flex min-h-[22px] items-center rounded-full px-2.5 text-[10px] font-bold uppercase tracking-wider ${
-                    employee.status === "Active"
-                      ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                      : employee.status === "On Leave"
-                      ? "bg-amber-50 text-amber-600 border border-amber-100"
-                      : "bg-red-50 text-red-600 border border-red-100"
-                  }`}>
-                    {employee.status || "Active"}
-                  </span>
-                  {employee.userId?.isActive === false && (
-                    <span className="inline-flex min-h-[22px] items-center rounded-full bg-slate-100 text-slate-500 border border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide">
-                      Deactivated
-                    </span>
+                {/* Personal Information */}
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                    Personal Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <User size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Gender
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.gender || "Not Specified"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <Calendar size={15} />
+                      </div>
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Date of Birth
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {formatOnlyDate(employee.dob)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === "compensation" && (
+              <>
+                {/* Compensation Card */}
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                    Compensation Details
+                  </h3>
+                  <div className="flex items-center gap-4 p-4 rounded-xl bg-emerald-50/50 border border-emerald-100/80 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <Coins size={22} />
+                    </div>
+                    <div>
+                      <small className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">
+                        Annual Fixed CTC / Salary
+                      </small>
+                      <span className="text-2xl font-black text-slate-900 tracking-tight">
+                        {employee.salary ? `₹${Number(employee.salary).toLocaleString("en-IN")}` : "Not Configured"}
+                      </span>
+                      <span className="text-xs text-slate-500 font-medium ml-1">/ year</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1 pt-2">
+                    <div>
+                      <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                        Pay Frequency
+                      </small>
+                      <span className="text-sm font-semibold text-slate-800">
+                        Monthly
+                      </span>
+                    </div>
+                    <div>
+                      <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                        Estimated Monthly Gross
+                      </small>
+                      <span className="text-sm font-semibold text-slate-800">
+                        {employee.salary ? `₹${Math.round(Number(employee.salary) / 12).toLocaleString("en-IN")}` : "-"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bank Account Details */}
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                      Bank Account Information
+                    </h3>
+                    <Landmark size={16} className="text-slate-400" />
+                  </div>
+
+                  {employee.bankDetails?.accountNumber ? (
+                    <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Bank Name
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.bankDetails.bankName || "N/A"}
+                        </span>
+                      </div>
+
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Account Number
+                        </small>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-sm font-mono font-bold text-slate-800">
+                            {employee.bankDetails.accountNumber}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(employee.bankDetails.accountNumber, "acc")}
+                            className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                            title="Copy Account Number"
+                          >
+                            {copiedField === "acc" ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          IFSC / Routing Code
+                        </small>
+                        <span className="text-sm font-mono font-bold text-slate-800">
+                          {employee.bankDetails.ifsc || "N/A"}
+                        </span>
+                      </div>
+
+                      <div>
+                        <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                          Branch Name
+                        </small>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {employee.bankDetails.branch || "N/A"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-slate-400 text-xs font-medium bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                      No banking details recorded for this employee profile.
+                    </div>
                   )}
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
-            <div className="flex items-center gap-3.5">
-              <Calendar size={16} className="text-brand-muted shrink-0" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Date Joined</small>
-                <span className="text-sm font-semibold text-brand-text">{formatOnlyDate(employee.joiningDate || employee.createdAt)}</span>
-              </div>
-            </div>
+            {activeTab === "account" && (
+              <>
+                {/* System & Audit Card */}
+                <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+                    Security & Account Status
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                    <div>
+                      <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                        Portal Login Access
+                      </small>
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold mt-1 text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                        <CheckCircle2 size={12} />
+                        Active & Enabled
+                      </span>
+                    </div>
+
+                    <div>
+                      <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                        Assigned Role
+                      </small>
+                      <span className="text-sm font-semibold text-slate-800">
+                        {employee.userId?.role || "Employee"}
+                      </span>
+                    </div>
+
+                    <div>
+                      <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                        Profile Created On
+                      </small>
+                      <span className="text-sm font-medium text-slate-700">
+                        {formatDate(employee.createdAt)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <small className="block text-slate-400 text-[10px] font-bold uppercase">
+                        Last Profile Update
+                      </small>
+                      <span className="text-sm font-medium text-slate-700">
+                        {formatDate(employee.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Creator Metadata */}
+                {employee.createdBy && (
+                  <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                      Record Owner
+                    </h3>
+                    <p className="text-xs text-slate-600">
+                      This profile was created by admin/HR ID:{" "}
+                      <span className="font-mono font-bold text-slate-800">
+                        {employee.createdBy?._id || employee.createdBy?.toString()}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
-          {employee.updatedAt && (
-            <div className="flex items-center gap-3.5 border-t border-slate-100 pt-3">
-              <Calendar size={16} className="text-brand-muted" />
-              <div>
-                <small className="block text-brand-muted text-[10px] font-bold uppercase tracking-widest leading-none mb-1">Profile Last Updated</small>
-                <span className="text-sm font-medium text-slate-700">{formatDate(employee.updatedAt)}</span>
-              </div>
-            </div>
-          )}
+          {/* Sticky Bottom Actions */}
+          <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between gap-3 shrink-0">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all cursor-pointer active:scale-98"
+            >
+              Close Panel
+            </button>
 
-          {/* Action Buttons */}
-          {showActions && (
-            <div className="flex gap-3 border-t border-slate-200/80 pt-4.5 mt-2">
-              {hasEditPermission && (
-                <button
-                  onClick={() => onEditClick(employee)}
-                  className="flex-1 min-h-[42px] bg-brand-primary hover:bg-brand-primary-dark text-white rounded-lg font-semibold flex items-center justify-center gap-2 active:scale-98 transition-all shadow-md shadow-brand-primary/10 cursor-pointer"
-                >
-                  <Edit2 size={16} />
-                  Edit Details
-                </button>
-              )}
-              
+            <div className="flex items-center gap-2">
               {hasDeletePermission && (
                 <button
                   onClick={() => onDeleteClick(employee)}
-                  className="flex-1 min-h-[42px] bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 active:scale-98 transition-all shadow-md shadow-red-500/10 cursor-pointer"
+                  className="px-4 py-2.5 rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-600 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-98"
                 >
-                  <Trash2 size={16} />
-                  Delete Profile
+                  <Trash2 size={13} />
+                  Delete
+                </button>
+              )}
+
+              {hasEditPermission && (
+                <button
+                  onClick={() => onEditClick(employee)}
+                  className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer active:scale-98"
+                >
+                  <Edit2 size={13} />
+                  Edit Employee
                 </button>
               )}
             </div>
-          )}
+          </div>
+
         </div>
-      </section>
+      </div>
     </div>
   );
 }

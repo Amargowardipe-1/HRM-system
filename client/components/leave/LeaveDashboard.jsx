@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
 import { applyLeaveRequest, getLeaveRequests, updateLeaveRequestStatus } from "@/lib/api";
+import { fetchLeaves, setLeaves } from "@/store/slices/leaveSlice";
+import { fetchEmployees } from "@/store/slices/employeeSlice";
 import { LeaveTable } from "./LeaveTable";
 import { LeaveForm } from "./LeaveForm";
 import { DesignationModal as LeaveModal } from "@/components/designation/DesignationModal";
@@ -10,22 +13,48 @@ import { Plus, RefreshCw, Filter, User, X } from "lucide-react";
 
 export function LeaveDashboard({
   initialLeaves = [],
-  employees = [],
+  employees: initialEmployees = [],
   currentUser = {},
   token = null,
 }) {
   const router = useRouter();
+  const dispatch = useDispatch();
+
+  const reduxLeaves = useSelector((state) => state.leaves.leaves);
+  const leavesLoaded = useSelector((state) => state.leaves.isLoaded);
+  const reduxEmployees = useSelector((state) => state.employees.employees);
+  const employeesLoaded = useSelector((state) => state.employees.isLoaded);
+
   const isAdmin = currentUser.role === "Admin";
   const hasLeaveViewAll = currentUser.permissions?.includes("leave:view_all") || false;
   const showFilters = hasLeaveViewAll;
 
-  const [leaves, setLeaves] = useState(initialLeaves);
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [filteredLeaves, setFilteredLeaves] = useState(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isActioning, setIsActioning] = useState(false);
   const [error, setError] = useState("");
+
+  const leaves = filteredLeaves !== null
+    ? filteredLeaves
+    : (reduxLeaves.length > 0 || leavesLoaded ? reduxLeaves : initialLeaves);
+
+  const employees = reduxEmployees.length > 0 || employeesLoaded ? reduxEmployees : initialEmployees;
+
+  // Initial load if not in Redux
+  useEffect(() => {
+    if (!leavesLoaded && initialLeaves.length === 0) {
+      dispatch(fetchLeaves({ token }));
+    } else if (initialLeaves.length > 0 && !leavesLoaded) {
+      dispatch(setLeaves(initialLeaves));
+    }
+
+    if (!employeesLoaded && initialEmployees.length === 0 && hasLeaveViewAll) {
+      dispatch(fetchEmployees(token));
+    }
+  }, [dispatch, leavesLoaded, employeesLoaded, initialLeaves, initialEmployees, hasLeaveViewAll, token]);
 
   // Re-fetch leaves when filters change
   useEffect(() => {
@@ -39,7 +68,7 @@ export function LeaveDashboard({
           },
           token
         );
-        setLeaves(data);
+        setFilteredLeaves(data);
       } catch (err) {
         setError(err.message || "Failed to load leave requests.");
       }
@@ -47,22 +76,29 @@ export function LeaveDashboard({
 
     if (selectedStatus !== "" || selectedEmployee !== "") {
       fetchFilteredLeaves();
+    } else {
+      setFilteredLeaves(null);
     }
-  }, [selectedStatus, selectedEmployee]);
+  }, [selectedStatus, selectedEmployee, token]);
 
   const loadAllLeaves = async () => {
     setError("");
     try {
-      const data = await getLeaveRequests(
-        {
-          status: selectedStatus,
-          employeeId: selectedEmployee,
-        },
-        token
-      );
-      setLeaves(data);
+      if (selectedStatus || selectedEmployee) {
+        const data = await getLeaveRequests(
+          {
+            status: selectedStatus,
+            employeeId: selectedEmployee,
+          },
+          token
+        );
+        setFilteredLeaves(data);
+      } else {
+        await dispatch(fetchLeaves({ token })).unwrap();
+        setFilteredLeaves(null);
+      }
     } catch (err) {
-      setError(err.message || "Failed to refresh leave requests.");
+      setError(err?.message || "Failed to refresh leave requests.");
     }
   };
 
@@ -73,7 +109,6 @@ export function LeaveDashboard({
       await applyLeaveRequest(formData, token);
       await loadAllLeaves();
       setShowApplyModal(false);
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to submit leave request.");
     } finally {
@@ -87,7 +122,6 @@ export function LeaveDashboard({
     try {
       await updateLeaveRequestStatus(leaveId, "Approved", token);
       await loadAllLeaves();
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to approve leave request.");
     } finally {
@@ -101,7 +135,6 @@ export function LeaveDashboard({
     try {
       await updateLeaveRequestStatus(leaveId, "Rejected", token);
       await loadAllLeaves();
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to reject leave request.");
     } finally {

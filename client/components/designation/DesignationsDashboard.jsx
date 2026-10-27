@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
 import { useAuth } from "@/context/AuthContext";
 import {
   createDesignation,
   updateDesignation,
   deleteDesignation,
 } from "@/lib/api";
+import { fetchDesignations, setDesignations } from "@/store/slices/designationSlice";
+import { fetchDepartments } from "@/store/slices/departmentSlice";
 import { Plus, RefreshCw } from "lucide-react";
 import { DesignationFilters } from "./DesignationFilters";
 import { DesignationTable } from "./DesignationTable";
@@ -17,17 +20,25 @@ import { DesignationForm } from "./DesignationForm";
 export function DesignationsDashboard({
   initialDesignations = [],
   initialPagination = { total: 0, page: 1, limit: 8, pages: 1 },
-  departments = [],
-  token = null,
+  departments: initialDepartments = [],
+  token: initialToken = null,
   searchParams = { search: "", department: "", status: "", page: "1" },
 }) {
   const router = useRouter();
-  const { user: currentUser } = useAuth() || {};
+  const dispatch = useDispatch();
+  const { user: currentUser, token: authToken } = useAuth() || {};
+  const token = authToken || initialToken;
   const isAdmin = currentUser?.role === "Admin";
+
+  const reduxDesignations = useSelector((state) => state.designations.designations);
+  const designationsLoaded = useSelector((state) => state.designations.isLoaded);
+  const reduxDepartments = useSelector((state) => state.departments.departments);
+  const departmentsLoaded = useSelector((state) => state.departments.isLoaded);
 
   const [searchTerm, setSearchTerm] = useState(searchParams.search || "");
   const [selectedDept, setSelectedDept] = useState(searchParams.department || "");
   const [selectedStatus, setSelectedStatus] = useState(searchParams.status || "");
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -37,50 +48,63 @@ export function DesignationsDashboard({
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync state with URL search params when they change
-  const searchVal = searchParams.search;
-  const deptVal = searchParams.department;
-  const statusVal = searchParams.status;
-
   useEffect(() => {
-    setSearchTerm(searchVal || "");
-    setSelectedDept(deptVal || "");
-    setSelectedStatus(statusVal || "");
-  }, [searchVal, deptVal, statusVal]);
+    if (!designationsLoaded && initialDesignations.length === 0) {
+      dispatch(fetchDesignations(token));
+    } else if (initialDesignations.length > 0 && !designationsLoaded) {
+      dispatch(setDesignations(initialDesignations));
+    }
 
-  // Push new query params to URL to trigger server-side re-fetch
-  const updateUrlParams = (search, dept, status, pageNum) => {
-    const query = new URLSearchParams();
-    if (search) query.append("search", search);
-    if (dept) query.append("department", dept);
-    if (status) query.append("status", status);
-    if (pageNum && pageNum !== 1) query.append("page", pageNum);
+    if (!departmentsLoaded && initialDepartments.length === 0) {
+      dispatch(fetchDepartments(token));
+    }
+  }, [dispatch, designationsLoaded, departmentsLoaded, initialDesignations, initialDepartments, token]);
 
-    const queryString = query.toString() ? `?${query.toString()}` : "";
-    router.push(`/designations${queryString}`);
-  };
+  const rawDesignations = reduxDesignations.length > 0 || designationsLoaded ? reduxDesignations : initialDesignations;
+  const allDesignations = Array.isArray(rawDesignations) ? rawDesignations : (rawDesignations?.data || []);
+
+  const rawDepartments = reduxDepartments.length > 0 || departmentsLoaded ? reduxDepartments : initialDepartments;
+  const departments = Array.isArray(rawDepartments) ? rawDepartments : (rawDepartments?.data || []);
+
+  const filteredDesignations = useMemo(() => {
+    if (!Array.isArray(allDesignations)) return [];
+    return allDesignations.filter((desig) => {
+      const matchesSearch = !searchTerm || desig.title?.toLowerCase().includes(searchTerm.toLowerCase());
+      const deptId = desig.department?._id || desig.department;
+      const matchesDept = !selectedDept || deptId === selectedDept;
+      const matchesStatus = !selectedStatus || (selectedStatus === "Active" ? desig.isActive : !desig.isActive);
+      return matchesSearch && matchesDept && matchesStatus;
+    });
+  }, [allDesignations, searchTerm, selectedDept, selectedStatus]);
 
   const handleSearchChange = (val) => {
     setSearchTerm(val);
-    updateUrlParams(val, selectedDept, selectedStatus, 1);
+    setCurrentPage(1);
   };
 
   const handleDeptChange = (val) => {
     setSelectedDept(val);
-    updateUrlParams(searchTerm, val, selectedStatus, 1);
+    setCurrentPage(1);
   };
 
   const handleStatusChange = (val) => {
     setSelectedStatus(val);
-    updateUrlParams(searchTerm, selectedDept, val, 1);
+    setCurrentPage(1);
   };
 
   const handlePageChange = (pageNum) => {
-    updateUrlParams(searchTerm, selectedDept, selectedStatus, pageNum);
+    setCurrentPage(pageNum);
   };
 
-  const handleRefresh = () => {
-    router.refresh();
+  const handleRefresh = async () => {
+    try {
+      await Promise.all([
+        dispatch(fetchDesignations(token)).unwrap(),
+        dispatch(fetchDepartments(token)).unwrap(),
+      ]);
+    } catch (err) {
+      console.error("Refresh error:", err);
+    }
   };
 
   // Open Create Modal
@@ -103,7 +127,7 @@ export function DesignationsDashboard({
     try {
       await createDesignation(formData, token);
       setShowCreateModal(false);
-      router.refresh();
+      dispatch(fetchDesignations(token));
     } catch (err) {
       setFormError(err.message || "Failed to create designation.");
     } finally {
@@ -118,7 +142,7 @@ export function DesignationsDashboard({
     try {
       await updateDesignation(selectedDesignation._id, formData, token);
       setShowEditModal(false);
-      router.refresh();
+      dispatch(fetchDesignations(token));
     } catch (err) {
       setFormError(err.message || "Failed to update designation.");
     } finally {
@@ -131,7 +155,7 @@ export function DesignationsDashboard({
     if (confirm(`Are you sure you want to delete designation "${title}"?`)) {
       try {
         await deleteDesignation(id, token);
-        router.refresh();
+        dispatch(fetchDesignations(token));
       } catch (err) {
         alert(err.message || "Failed to delete designation.");
       }
@@ -182,13 +206,18 @@ export function DesignationsDashboard({
 
       {/* Table Section */}
       <DesignationTable
-        designations={initialDesignations}
-        isLoading={false}
+        designations={filteredDesignations.slice((currentPage - 1) * 8, currentPage * 8)}
+        isLoading={!designationsLoaded}
         isAdmin={isAdmin}
         onEditClick={handleOpenEdit}
         onDeleteClick={handleDelete}
-        pagination={initialPagination}
-        page={Number(searchParams.page || 1)}
+        pagination={{
+          total: filteredDesignations.length,
+          page: currentPage,
+          limit: 8,
+          pages: Math.ceil(filteredDesignations.length / 8) || 1,
+        }}
+        page={currentPage}
         onPageChange={handlePageChange}
       />
 

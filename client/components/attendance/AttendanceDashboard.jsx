@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
 import { checkInAttendance, checkOutAttendance, getAttendanceRecords } from "@/lib/api";
+import { fetchAttendanceRecords, setAttendanceRecords } from "@/store/slices/attendanceSlice";
+import { fetchEmployees } from "@/store/slices/employeeSlice";
+import { fetchDepartments } from "@/store/slices/departmentSlice";
 import { AttendanceActions } from "./AttendanceActions";
 import { AttendanceFilters } from "./AttendanceFilters";
 import { AttendanceTable } from "./AttendanceTable";
@@ -10,20 +14,61 @@ import { RefreshCw } from "lucide-react";
 
 export function AttendanceDashboard({
   initialRecords = [],
-  employees = [],
+  employees: initialEmployees = [],
   currentUser = {},
   token = null,
 }) {
   const router = useRouter();
+  const dispatch = useDispatch();
+
+  const reduxRecords = useSelector((state) => state.attendance.records);
+  const attendanceLoaded = useSelector((state) => state.attendance.isLoaded);
+  const reduxEmployees = useSelector((state) => state.employees.employees);
+  const employeesLoaded = useSelector((state) => state.employees.isLoaded);
+  const reduxDepartments = useSelector((state) => state.departments.departments);
+  const departmentsLoaded = useSelector((state) => state.departments.isLoaded);
+
   const isAdmin = currentUser.role === "Admin";
   const hasAttendanceViewAll = currentUser.permissions?.includes("attendance:view_all") || false;
   const showFilters = hasAttendanceViewAll;
 
-  const [records, setRecords] = useState(initialRecords);
+  // Filter States
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [viewMode, setViewMode] = useState("summary");
+
+  const [filteredRecords, setFilteredRecords] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Determine current records and employees
+  const records = filteredRecords !== null
+    ? filteredRecords
+    : (reduxRecords.length > 0 || attendanceLoaded ? reduxRecords : initialRecords);
+
+  const employees = reduxEmployees.length > 0 || employeesLoaded ? reduxEmployees : initialEmployees;
+  const departments = reduxDepartments.length > 0 || departmentsLoaded ? reduxDepartments : [];
+
+  // Initial load if not in Redux
+  useEffect(() => {
+    if (!attendanceLoaded && initialRecords.length === 0) {
+      dispatch(fetchAttendanceRecords({ token }));
+    } else if (initialRecords.length > 0 && !attendanceLoaded) {
+      dispatch(setAttendanceRecords(initialRecords));
+    }
+
+    if (!employeesLoaded && initialEmployees.length === 0 && hasAttendanceViewAll) {
+      dispatch(fetchEmployees(token));
+    }
+
+    if (!departmentsLoaded) {
+      dispatch(fetchDepartments(token));
+    }
+  }, [dispatch, attendanceLoaded, employeesLoaded, departmentsLoaded, initialRecords, initialEmployees, hasAttendanceViewAll, token]);
 
   // Helper to get local YYYY-MM-DD date string
   const getLocalDateString = (dateObj) => {
@@ -45,7 +90,7 @@ export function AttendanceDashboard({
     return recDateStr === todayStr && recUserId?.toString() === currentUserId?.toString();
   });
 
-  // Re-fetch records when filters change
+  // Re-fetch records when date or employee filter changes in daily view
   useEffect(() => {
     const fetchFilteredRecords = async () => {
       setError("");
@@ -57,31 +102,37 @@ export function AttendanceDashboard({
           },
           token
         );
-        setRecords(data);
+        setFilteredRecords(data);
       } catch (err) {
         setError(err.message || "Failed to load attendance logs.");
       }
     };
 
-    // Skip initial fetch on mount since we already have initialRecords
     if (selectedDate !== "" || selectedEmployee !== "") {
       fetchFilteredRecords();
+    } else {
+      setFilteredRecords(null);
     }
-  }, [selectedDate, selectedEmployee]);
+  }, [selectedDate, selectedEmployee, token]);
 
   const loadAllRecords = async () => {
     setError("");
     try {
-      const data = await getAttendanceRecords(
-        {
-          date: selectedDate,
-          employeeId: selectedEmployee,
-        },
-        token
-      );
-      setRecords(data);
+      if (selectedDate || selectedEmployee) {
+        const data = await getAttendanceRecords(
+          {
+            date: selectedDate,
+            employeeId: selectedEmployee,
+          },
+          token
+        );
+        setFilteredRecords(data);
+      } else {
+        await dispatch(fetchAttendanceRecords({ token })).unwrap();
+        setFilteredRecords(null);
+      }
     } catch (err) {
-      setError(err.message || "Failed to refresh attendance logs.");
+      setError(err?.message || "Failed to refresh attendance logs.");
     }
   };
 
@@ -91,7 +142,6 @@ export function AttendanceDashboard({
     try {
       await checkInAttendance(remarks, token);
       await loadAllRecords();
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to check in.");
     } finally {
@@ -105,7 +155,6 @@ export function AttendanceDashboard({
     try {
       await checkOutAttendance(remarks, token);
       await loadAllRecords();
-      router.refresh();
     } catch (err) {
       setError(err.message || "Failed to check out.");
     } finally {
@@ -120,12 +169,12 @@ export function AttendanceDashboard({
         <div>
           <h1 className="text-2xl font-extrabold text-brand-text tracking-tight">Attendance</h1>
           <p className="text-sm text-brand-muted mt-1">
-            Track daily work hours, log check-in/out times, and view history.
+            Track daily work hours, monthly check-in/out times, and user attendance status.
           </p>
         </div>
         <button
           onClick={loadAllRecords}
-          className="inline-flex min-h-[42px] items-center justify-center gap-2 border border-slate-200 bg-white text-brand-text rounded-lg font-semibold px-4.5 transition-all hover:bg-slate-50 active:scale-98 cursor-pointer max-sm:w-full"
+          className="inline-flex min-h-[42px] items-center justify-center gap-2 border border-slate-200 bg-white text-brand-text rounded-xl font-semibold px-4.5 transition-all hover:bg-slate-50 active:scale-98 cursor-pointer max-sm:w-full shadow-xs"
           title="Refresh list"
         >
           <RefreshCw size={17} />
@@ -150,18 +199,39 @@ export function AttendanceDashboard({
         />
       )}
 
-      {/* Filters (Date and Employee Select for Admin/HR) */}
+      {/* Enhanced Filters (Month, Year, Search, Department, View Mode) */}
       <AttendanceFilters
+        selectedMonth={selectedMonth}
+        onMonthChange={setSelectedMonth}
+        selectedYear={selectedYear}
+        onYearChange={setSelectedYear}
         selectedDate={selectedDate}
         onDateChange={setSelectedDate}
         selectedEmployee={selectedEmployee}
         onEmployeeChange={setSelectedEmployee}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        selectedDepartment={selectedDepartment}
+        onDepartmentChange={setSelectedDepartment}
+        departments={departments}
         employees={employees}
         showEmployeeFilter={showFilters}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
-      {/* Attendance Log Table */}
-      <AttendanceTable records={records} showEmployeeColumn={showFilters} />
+      {/* User-Centric Monthly Timesheet & Logs Table */}
+      <AttendanceTable
+        records={records}
+        employees={employees}
+        currentUser={currentUser}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        searchQuery={searchQuery}
+        selectedDepartment={selectedDepartment}
+        viewMode={viewMode}
+        showEmployeeColumn={showFilters}
+      />
     </main>
   );
 }

@@ -2,7 +2,9 @@
 
 import { createContext, useContext, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useDispatch } from "react-redux";
 import { API_BASE_URL } from "@/lib/api";
+import { prefetchAllAppData } from "@/store";
 
 const AuthContext = createContext(null);
 
@@ -13,6 +15,7 @@ export function AuthProvider({ children }) {
   
   const router = useRouter();
   const pathname = usePathname();
+  const dispatch = useDispatch();
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -38,6 +41,8 @@ export function AuthProvider({ children }) {
           setUser(payload.data);
           // Sync cookie
           document.cookie = `token=${storedToken}; path=/; max-age=86400; SameSite=Lax`;
+          // Pre-fetch all application data in the background
+          dispatch(prefetchAllAppData(storedToken));
         } else {
           // Token is invalid or expired
           localStorage.removeItem("token");
@@ -51,7 +56,7 @@ export function AuthProvider({ children }) {
     }
 
     restoreSession();
-  }, []);
+  }, [dispatch]);
 
   // Automatic route protection based on auth state
   useEffect(() => {
@@ -90,6 +95,7 @@ export function AuthProvider({ children }) {
     document.cookie = `token=${receivedToken}; path=/; max-age=86400; SameSite=Lax`;
     setToken(receivedToken);
     setUser(receivedUser);
+    dispatch(prefetchAllAppData(receivedToken));
     
     router.push("/dashboard");
   }

@@ -16,25 +16,32 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import {
   createDepartment,
+  updateDepartment,
   deleteDepartment,
   getDepartmentById,
-  getDepartments,
-  getUsers,
-  updateDepartment,
 } from "@/lib/api";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchDepartments, addDepartment, updateDepartmentInStore, removeDepartment } from "@/store/slices/departmentSlice";
+import { fetchEmployees } from "@/store/slices/employeeSlice";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 
 export default function DepartmentsPage() {
   const { user: currentUser } = useAuth() || {};
+  const dispatch = useDispatch();
+
+  // Redux state
+  const { departments, isLoaded: deptsLoaded, loading: deptsLoading } = useSelector(
+    (state) => state.departments
+  );
+  const { employees: users, isLoaded: usersLoaded } = useSelector(
+    (state) => state.employees
+  );
 
   // Permissions based on user role
   const canCreate = currentUser?.role === "Admin";
   const canEdit = currentUser?.role === "Admin" || currentUser?.role === "HR";
   const canDelete = currentUser?.role === "Admin";
 
-  const [departments, setDepartments] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -60,24 +67,30 @@ export default function DepartmentsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const isLoading = !deptsLoaded && deptsLoading;
+
+  // Initial load if not loaded in Redux
+  useEffect(() => {
+    if (!deptsLoaded) {
+      dispatch(fetchDepartments());
+    }
+    if (!usersLoaded) {
+      dispatch(fetchEmployees());
+    }
+  }, [dispatch, deptsLoaded, usersLoaded]);
+
   // Load all departments and users
   async function loadData() {
-    setIsLoading(true);
     setError("");
     try {
-      const [depts, allUsers] = await Promise.all([getDepartments(), getUsers()]);
-      setDepartments(depts);
-      setUsers(allUsers);
+      await Promise.all([
+        dispatch(fetchDepartments()).unwrap(),
+        dispatch(fetchEmployees()).unwrap(),
+      ]);
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+      setError(err?.message || "Failed to reload departments");
     }
   }
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   // Filtered departments based on search term
   const filteredDepartments = useMemo(() => {

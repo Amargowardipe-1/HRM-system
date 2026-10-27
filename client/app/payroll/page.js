@@ -1,8 +1,5 @@
 import { PayrollDashboard } from "@/components/payroll/PayrollDashboard";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 export const metadata = {
   title: "Payroll Management | People Ops HRM",
   description: "Calculate employee salaries, process monthly payrolls, and download payslips.",

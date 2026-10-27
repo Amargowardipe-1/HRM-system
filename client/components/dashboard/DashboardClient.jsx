@@ -1,14 +1,31 @@
 "use client";
 
+import { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useAuth } from "@/context/AuthContext";
+import { prefetchAllAppData } from "@/store";
+import { setDashboardStats } from "@/store/slices/dashboardSlice";
 import { DashboardCard } from "./DashboardCard";
 import { AttendanceDoughnut, DepartmentBarChart } from "./DashboardCharts";
 import { HrAnalyticsWidget, HolidaysCelebrationsWidget, LeaveBalanceWidget } from "./DashboardWidgets";
 import { DashboardActivities } from "./DashboardActivities";
 import { Users, Building2, CalendarDays, CalendarCheck, Clock } from "lucide-react";
 
-export function DashboardClient({ stats = {} }) {
-  const { user } = useAuth() || {};
+export function DashboardClient({ stats: initialStats = {} }) {
+  const dispatch = useDispatch();
+  const reduxStats = useSelector((state) => state.dashboard.stats);
+  const { user, token } = useAuth() || {};
+
+  // Prefetch all pages data in the background once dashboard mounts
+  useEffect(() => {
+    if (initialStats && Object.keys(initialStats).length > 0) {
+      dispatch(setDashboardStats(initialStats));
+    }
+    const currentToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
+    dispatch(prefetchAllAppData(currentToken));
+  }, [dispatch, initialStats, token]);
+
+  const stats = (initialStats && Object.keys(initialStats).length > 0) ? initialStats : reduxStats;
   const isAdminOrHR = stats.role === "Admin" || stats.role === "HR";
 
   const firstName = user?.firstName || user?.name?.split(" ")[0] || "User";
