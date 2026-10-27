@@ -15,50 +15,19 @@ const {
   calculateOvertimeAmount,
 } = require("./payroll.helper");
 
-const generatePayroll = async (
-  userId,
-  payload
-) => {
-  const {
-    employee,
-    month,
-    year,
-    allowance = 0,
-    bonus = 0,
-    deduction = 0,
-    remarks = "",
-  } = payload;
+// Helper: Calculate complete attendance metrics, deductions, and salary components
+const calculatePayrollDetails = async ({
+  employeeData,
+  month,
+  year,
+  allowance = 0,
+  bonus = 0,
+  deduction = 0,
+}) => {
+  const employeeId = employeeData._id;
+  const basicSalary = Number(employeeData.salary) || 0;
 
-    const employeeData =
-    await Employee.findOne({
-      _id: employee,
-    })
-      .populate("department", "name")
-      .populate("designation", "title");
-
-  if (!employeeData) {
-    throw new Error(
-      PAYROLL_MESSAGES.EMPLOYEE_NOT_FOUND
-    );
-  }
-
-    const existingPayroll =
-    await Payroll.findOne({
-      employee,
-      month,
-      year,
-      isDeleted: false,
-    });
-
-  if (existingPayroll) {
-    throw new Error(
-      PAYROLL_MESSAGES.ALREADY_EXISTS
-    );
-  }
-
-  const basicSalary = employeeData.salary;
-
-  // Fetch Attendance Settings
+  // 1. Fetch Attendance Settings
   const AttendanceSetting = require("../settings/attendanceSetting.model");
   let settings = await AttendanceSetting.findOne();
   if (!settings) {
@@ -75,126 +44,303 @@ const generatePayroll = async (
     };
   }
 
-  // Calculate Attendance Metrics dynamically for the month/year
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+  const weekendDays =
+    settings.weekend && Array.isArray(settings.weekend)
+      ? settings.weekend
+      : ["Saturday", "Sunday"];
+  const fullDayLimit = settings.fullDayHours || 8;
 
+  // 2. Month Date Range
+  const numYear = Number(year);
+  const numMonth = Number(month);
+  const startDate = new Date(numYear, numMonth - 1, 1);
+  const endDate = new Date(numYear, numMonth, 0, 23, 59, 59, 999);
+  const daysInMonth = new Date(numYear, numMonth, 0).getDate();
+
+  // If calculating for current ongoing month, evaluate up to today's date
+  const now = new Date();
+  const isCurrentMonth =
+    now.getFullYear() === numYear && now.getMonth() + 1 === numMonth;
+  const isFutureMonth =
+    numYear > now.getFullYear() ||
+    (numYear === now.getFullYear() && numMonth > now.getMonth() + 1);
+  const maxDayToEvaluate = isCurrentMonth
+    ? Math.min(now.getDate(), daysInMonth)
+    : isFutureMonth
+    ? 0
+    : daysInMonth;
+
+  // 3. Fetch Holidays in Month
+  const Holiday = require("../holiday/holiday.model");
+  const holidays = await Holiday.find({
+    date: { $gte: startDate, $lte: endDate },
+    isDeleted: { $ne: true },
+  });
+  const holidayDates = new Set();
+  holidays.forEach((h) => {
+    if (h.date) {
+      const hd = new Date(h.date);
+      holidayDates.add(`${hd.getFullYear()}-${hd.getMonth() + 1}-${hd.getDate()}`);
+    }
+  });
+
+  // 4. Fetch Approved Leaves
+  const Leave = require("../leave/leave.model");
+  const approvedLeaves = await Leave.find({
+    employeeId,
+    status: "Approved",
+    startDate: { $lte: endDate },
+    endDate: { $gte: startDate },
+  });
+
+  const paidLeaveDates = new Set();
+  const unpaidLeaveDates = new Set();
+
+  approvedLeaves.forEach((leave) => {
+    const cur = new Date(Math.max(new Date(leave.startDate).getTime(), startDate.getTime()));
+    const last = new Date(Math.min(new Date(leave.endDate).getTime(), endDate.getTime()));
+    cur.setHours(0, 0, 0, 0);
+    last.setHours(0, 0, 0, 0);
+
+    while (cur <= last) {
+      const curYear = cur.getFullYear();
+      const curMonth = cur.getMonth() + 1;
+      const curDate = cur.getDate();
+      const key = `${curYear}-${curMonth}-${curDate}`;
+      const dayName = cur.toLocaleDateString("en-US", { weekday: "long" });
+
+      if (!weekendDays.includes(dayName) && !holidayDates.has(key)) {
+        if (leave.leaveType === "Unpaid Leave") {
+          unpaidLeaveDates.add(key);
+        } else {
+          paidLeaveDates.add(key);
+        }
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+  });
+
+  // 5. Fetch Attendance Records
   const Attendance = require("../attendance/attendance.model");
   const attendanceRecords = await Attendance.find({
-    employee,
+    employee: employeeId,
     date: { $gte: startDate, $lte: endDate },
     isDeleted: false,
   });
 
-  let presentDays = 0;
-  let absentDays = 0;
-  let leaveDays = 0;
-  let lateMarksCount = 0;
+  const attendanceMap = new Map();
   let overtimeHours = 0;
 
   attendanceRecords.forEach((record) => {
-    if (record.status === "Present") {
-      presentDays += 1;
-    } else if (record.status === "Late") {
-      presentDays += 1;
-      lateMarksCount += 1;
-    } else if (record.status === "Half Day") {
-      presentDays += 0.5;
-      absentDays += 0.5;
-    } else if (record.status === "Leave") {
-      leaveDays += 1;
-    } else if (record.status === "Absent") {
-      absentDays += 1;
-    }
+    if (record.date) {
+      const rd = new Date(record.date);
+      const key = `${rd.getFullYear()}-${rd.getMonth() + 1}-${rd.getDate()}`;
+      attendanceMap.set(key, record);
 
-    const fullDayLimit = settings.fullDayHours || 8;
-    if (settings.overtimeEnabled && record.workingHours > fullDayLimit) {
-      overtimeHours += (record.workingHours - fullDayLimit);
+      if (settings.overtimeEnabled && record.workingHours > fullDayLimit) {
+        overtimeHours += record.workingHours - fullDayLimit;
+      }
     }
   });
 
-  // Calculate working days in that month (excluding weekends)
-  let workingDays = 0;
-  const daysInMonth = new Date(year, month, 0).getDate();
+  // 6. Day-by-Day Evaluation
+  let totalWorkingDaysInMonth = 0;
+  let presentDays = 0;
+  let halfDays = 0;
+  let leaveDays = 0;
+  let absentDays = 0;
+  let lateMarksCount = 0;
+
   for (let d = 1; d <= daysInMonth; d++) {
-    const dayDate = new Date(year, month - 1, d);
+    const dayDate = new Date(numYear, numMonth - 1, d);
     const dayName = dayDate.toLocaleDateString("en-US", { weekday: "long" });
-    if (!settings.weekend.includes(dayName)) {
-      workingDays++;
+    const key = `${numYear}-${numMonth}-${d}`;
+
+    const isWeekend = weekendDays.includes(dayName);
+    const isHoliday = holidayDates.has(key);
+
+    if (!isWeekend && !isHoliday) {
+      totalWorkingDaysInMonth++;
+
+      if (d <= maxDayToEvaluate) {
+        const record = attendanceMap.get(key);
+
+        if (record) {
+          if (record.status === "Present") {
+            presentDays += 1;
+          } else if (record.status === "Late") {
+            presentDays += 1;
+            lateMarksCount += 1;
+          } else if (record.status === "Half Day") {
+            presentDays += 0.5;
+            halfDays += 1;
+            absentDays += 0.5; // Half day pay deduction
+          } else if (record.status === "Leave") {
+            if (unpaidLeaveDates.has(key)) {
+              absentDays += 1;
+            } else {
+              leaveDays += 1;
+            }
+          } else if (record.status === "Absent") {
+            absentDays += 1;
+          } else {
+            presentDays += 1;
+          }
+        } else {
+          // No record on this working day
+          if (paidLeaveDates.has(key)) {
+            leaveDays += 1; // Approved paid leave
+          } else if (unpaidLeaveDates.has(key)) {
+            absentDays += 1; // Unpaid leave / LOP
+          } else {
+            absentDays += 1; // Unapproved absence / Chhutti
+          }
+        }
+      }
     }
   }
 
-  const attendanceSummary = {
-    workingDays,
-    presentDays,
-    absentDays,
-    leaveDays,
-    overtimeHours: Number(overtimeHours.toFixed(2)),
-  };
+  const workingDays = Math.max(1, totalWorkingDaysInMonth);
+  // Per day basic rate
+  const dailyRate = Number((basicSalary / workingDays).toFixed(2));
+
+  // Attendance deductions: absent days + half days (already 0.5 per half day in absentDays)
+  let attendanceDeduction = 0;
+  if (absentDays >= workingDays) {
+    attendanceDeduction = basicSalary;
+  } else {
+    attendanceDeduction = Number((absentDays * dailyRate).toFixed(2));
+    attendanceDeduction = Math.min(basicSalary, attendanceDeduction);
+  }
 
   // Late mark deductions calculation
   let lateDeductionAmount = 0;
-  const allowedLates = settings.allowedLateMarks !== undefined ? settings.allowedLateMarks : 3;
-  const deductionMultiplier = settings.deductionPerLateMark !== undefined ? settings.deductionPerLateMark : 0.5;
-  
+  const allowedLates =
+    settings.allowedLateMarks !== undefined ? settings.allowedLateMarks : 3;
+  const deductionMultiplier =
+    settings.deductionPerLateMark !== undefined ? settings.deductionPerLateMark : 0.5;
+
   if (lateMarksCount > allowedLates) {
     const extraLate = lateMarksCount - allowedLates;
-    const dailyRate = basicSalary / 26;
-    lateDeductionAmount = extraLate * deductionMultiplier * dailyRate;
+    lateDeductionAmount = Number((extraLate * deductionMultiplier * dailyRate).toFixed(2));
   }
 
-  const finalDeduction = Number(deduction) + Number(lateDeductionAmount.toFixed(2));
-  const fullDayLimit = settings.fullDayHours || 8;
-  const hourlyRate = basicSalary / (26 * fullDayLimit);
-
+  // Overtime Amount
+  const hourlyRate = Number((dailyRate / fullDayLimit).toFixed(2));
   const overtimeAmount = calculateOvertimeAmount({
-    overtimeHours: attendanceSummary.overtimeHours,
+    overtimeHours,
     hourlyRate,
   });
 
   const grossSalary = calculateGrossSalary({
     basicSalary,
-    allowance,
-    bonus,
+    allowance: Number(allowance) || 0,
+    bonus: Number(bonus) || 0,
     overtimeAmount,
   });
 
-  const pf = calculatePF(basicSalary);
-  const esic = calculateESIC(grossSalary);
-  const tax = calculateTax(grossSalary);
+  // Total deduction includes manual deduction + attendance deduction (chhutti & half-day) + late deduction
+  const totalAttendanceDeduction = Number((attendanceDeduction + lateDeductionAmount).toFixed(2));
+  const finalDeduction = Number(((Number(deduction) || 0) + totalAttendanceDeduction).toFixed(2));
 
-  const netSalary = calculateNetSalary({
-    grossSalary,
+  // Statutory: PF on earned basic, ESIC/Tax on effective gross
+  const earnedBasic = Math.max(0, basicSalary - attendanceDeduction);
+  const pf = calculatePF(earnedBasic);
+  const effectiveGross = Math.max(0, grossSalary - totalAttendanceDeduction);
+  const esic = calculateESIC(effectiveGross);
+  const tax = calculateTax(effectiveGross);
+
+  const netSalary = Math.max(
+    0,
+    calculateNetSalary({
+      grossSalary,
+      deduction: finalDeduction,
+      tax,
+      pf,
+      esic,
+    })
+  );
+
+  return {
+    attendanceSummary: {
+      workingDays,
+      presentDays,
+      absentDays,
+      halfDays,
+      leaveDays,
+      overtimeHours: Number(overtimeHours.toFixed(2)),
+    },
+    basicSalary,
+    allowance: Number(allowance) || 0,
+    bonus: Number(bonus) || 0,
+    overtimeAmount,
     deduction: finalDeduction,
     tax,
     pf,
     esic,
+    grossSalary,
+    netSalary: grossSalary <= finalDeduction ? 0 : netSalary,
+  };
+};
+
+const generatePayroll = async (
+  userId,
+  payload
+) => {
+  const {
+    employee,
+    month,
+    year,
+    allowance = 0,
+    bonus = 0,
+    deduction = 0,
+    remarks = "",
+  } = payload;
+
+  const employeeData = await Employee.findOne({
+    _id: employee,
+  })
+    .populate("department", "name")
+    .populate("designation", "title");
+
+  if (!employeeData) {
+    throw new Error(PAYROLL_MESSAGES.EMPLOYEE_NOT_FOUND);
+  }
+
+  const existingPayroll = await Payroll.findOne({
+    employee,
+    month: Number(month),
+    year: Number(year),
+    isDeleted: false,
+  });
+
+  if (existingPayroll) {
+    throw new Error(PAYROLL_MESSAGES.ALREADY_EXISTS);
+  }
+
+  const details = await calculatePayrollDetails({
+    employeeData,
+    month: Number(month),
+    year: Number(year),
+    allowance,
+    bonus,
+    deduction,
   });
 
   const payroll = await Payroll.create({
     employee,
-    month,
-    year,
+    month: Number(month),
+    year: Number(year),
     employeeSnapshot: {
       employeeCode: employeeData.employeeCode || "",
       name: employeeData.name,
       department: employeeData.department?.name || "",
       designation: employeeData.designation?.title || "",
     },
-    attendanceSummary,
-    basicSalary,
-    allowance,
-    bonus,
-    overtimeAmount,
-    deduction: finalDeduction,
-    tax,
-    pf,
-    esic,
-    grossSalary,
-    netSalary,
+    ...details,
     status: PAYROLL_STATUS.GENERATED,
     generatedBy: userId,
-    remarks,
+    remarks: remarks || `Attendance: ${details.attendanceSummary.presentDays} Present, ${details.attendanceSummary.halfDays} Half Day, ${details.attendanceSummary.absentDays} Absent`,
   });
 
   return payroll;
@@ -527,7 +673,9 @@ const getMonthlyPayrollReport = async (month, year) => {
 };
 
 const autoGenerateMonthlyPayroll = async (userId, month, year) => {
-  const activeEmployees = await Employee.find({ status: "Active" });
+  const activeEmployees = await Employee.find({ status: "Active" })
+    .populate("department", "name")
+    .populate("designation", "title");
   let count = 0;
 
   for (const emp of activeEmployees) {
@@ -538,23 +686,49 @@ const autoGenerateMonthlyPayroll = async (userId, month, year) => {
       isDeleted: false,
     });
 
+    const details = await calculatePayrollDetails({
+      employeeData: emp,
+      month: Number(month),
+      year: Number(year),
+      allowance: 0,
+      bonus: 0,
+      deduction: 0,
+    });
+
+    const employeeSnapshot = {
+      employeeCode: emp.employeeCode || "",
+      name: `${emp.firstName || ""} ${emp.lastName || ""}`.trim() || emp.name || "Employee",
+      department: emp.department?.name || "",
+      designation: emp.designation?.title || "",
+    };
+
+    const remarksText = `Auto-generated: ${details.attendanceSummary.presentDays} Present, ${details.attendanceSummary.halfDays} Half Day, ${details.attendanceSummary.absentDays} Absent`;
+
     if (!exists) {
-      // Create default payroll period with 0 allowance/bonus/deductions
-      await generatePayroll(userId, {
+      await Payroll.create({
         employee: emp._id,
         month: Number(month),
         year: Number(year),
-        allowance: 0,
-        bonus: 0,
-        deduction: 0,
-        remarks: "Auto-generated by system scheduler",
+        employeeSnapshot,
+        ...details,
+        status: PAYROLL_STATUS.GENERATED,
+        generatedBy: userId,
+        remarks: remarksText,
       });
+      count++;
+    } else if (exists.status !== PAYROLL_STATUS.PAID) {
+      // Recalculate and update existing generated payroll with latest attendance and deduction calculations
+      Object.assign(exists, details);
+      exists.employeeSnapshot = employeeSnapshot;
+      exists.remarks = remarksText;
+      exists.generatedBy = userId;
+      await exists.save();
       count++;
     }
   }
 
   return {
-    message: `Payroll auto-generation completed. Generated ${count} payroll records.`,
+    message: `Payroll auto-generation completed. Processed ${count} employee payroll records with attendance-based deductions.`,
     generatedCount: count,
   };
 };

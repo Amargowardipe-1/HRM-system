@@ -167,6 +167,32 @@ export function PayslipModal({ payroll, onClose }) {
               </div>
             </div>
 
+            {/* Attendance Snapshot */}
+            {payroll.attendanceSummary && (
+              <div className="grid grid-cols-5 max-sm:grid-cols-2 gap-2 p-3 bg-slate-100/70 border border-slate-200 rounded-lg mb-6 text-center text-xs">
+                <div>
+                  <span className="text-slate-400 font-bold uppercase text-[9px] block">Working Days</span>
+                  <span className="font-extrabold text-slate-800 font-mono text-sm">{payroll.attendanceSummary.workingDays || 0}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase text-[9px] block">Present</span>
+                  <span className="font-extrabold text-emerald-600 font-mono text-sm">{payroll.attendanceSummary.presentDays || 0}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase text-[9px] block">Half Days</span>
+                  <span className="font-extrabold text-amber-600 font-mono text-sm">{payroll.attendanceSummary.halfDays || 0}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase text-[9px] block">Absent / LOP</span>
+                  <span className="font-extrabold text-rose-600 font-mono text-sm">{payroll.attendanceSummary.absentDays || 0}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase text-[9px] block">Paid Leaves</span>
+                  <span className="font-extrabold text-blue-600 font-mono text-sm">{payroll.attendanceSummary.leaveDays || 0}</span>
+                </div>
+              </div>
+            )}
+
             {/* Earnings and Deductions Breakup */}
             <div className="grid grid-cols-2 gap-0 border border-slate-200 rounded-lg overflow-hidden">
               {/* Earnings Column */}
@@ -230,8 +256,15 @@ export function PayslipModal({ payroll, onClose }) {
                   )}
                   {payroll.deduction > 0 && (
                     <div className="flex justify-between items-center text-slate-600 font-medium">
-                      <span>Other Deductions</span>
-                      <span className="font-mono">₹{payroll.deduction.toLocaleString("en-IN")}</span>
+                      <div>
+                        <span>Attendance & Other Deductions</span>
+                        {(payroll.attendanceSummary?.absentDays > 0 || payroll.attendanceSummary?.halfDays > 0) && (
+                          <span className="block text-[10px] text-slate-400">
+                            ({payroll.attendanceSummary.absentDays} absent/LOP, {payroll.attendanceSummary.halfDays || 0} half-day)
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-mono text-rose-600 font-bold">₹{payroll.deduction.toLocaleString("en-IN")}</span>
                     </div>
                   )}
                 </div>

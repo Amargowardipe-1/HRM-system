@@ -45,6 +45,17 @@ function getLocalDateString(dateObj) {
   return `${year}-${month}-${day}`;
 }
 
+function getDepartmentName(dept) {
+  if (!dept) return "General";
+  if (typeof dept === "string") return dept;
+  if (typeof dept === "object") {
+    if (typeof dept.name === "string") return dept.name;
+    if (dept.name && typeof dept.name === "object") return getDepartmentName(dept.name);
+    return dept.title || "General";
+  }
+  return "General";
+}
+
 export function AttendanceTable({
   records = [],
   employees = [],
@@ -112,13 +123,14 @@ export function AttendanceTable({
       if (matched) {
         employeeList = [matched];
       } else {
+        const deptStr = getDepartmentName(currentUser.department);
         employeeList = [
           {
             _id: currentUser.employeeId || currentUserId,
             firstName: currentUser.firstName || currentUser.name || "My",
             lastName: currentUser.lastName || "Attendance",
             employeeCode: currentUser.employeeCode || "EMP-ME",
-            department: { name: currentUser.department || "General" },
+            department: { name: deptStr },
             userId: { email: currentUser.email, role: currentUser.role },
           },
         ];
@@ -484,7 +496,7 @@ export function AttendanceTable({
                                   {emp.employeeCode || "EMP"}
                                 </span>
                                 <span>•</span>
-                                <span>{emp.department?.name || "General"}</span>
+                                <span>{getDepartmentName(emp.department)}</span>
                               </span>
                             </div>
                           </div>

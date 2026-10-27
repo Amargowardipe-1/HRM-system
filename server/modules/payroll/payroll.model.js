@@ -86,6 +86,12 @@ const payrollSchema = new mongoose.Schema(
         min: 0,
       },
 
+      halfDays: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
       leaveDays: {
         type: Number,
         default: 0,

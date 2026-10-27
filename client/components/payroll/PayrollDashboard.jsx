@@ -473,7 +473,14 @@ export function PayrollDashboard() {
                       </div>
                     </td>
                     <td className="px-6 py-4.5 text-slate-600">
-                      {MONTH_NAMES[payroll.month - 1]} {payroll.year}
+                      <div className="font-semibold text-slate-800">{MONTH_NAMES[payroll.month - 1]} {payroll.year}</div>
+                      {payroll.attendanceSummary && (
+                        <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                          <span className="text-emerald-600">{payroll.attendanceSummary.presentDays}P</span> •{" "}
+                          <span className="text-amber-600">{payroll.attendanceSummary.halfDays || 0}HD</span> •{" "}
+                          <span className="text-rose-500">{payroll.attendanceSummary.absentDays || 0}A</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4.5 font-mono">
                       ₹{payroll.basicSalary.toLocaleString("en-IN")}
